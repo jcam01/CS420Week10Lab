@@ -22,7 +22,6 @@ class Cow implements FarmItem {
     public void remove(FarmItem item) {
         throw new UnsupportedOperationException("Cannot remove an Item from a Cow");
     }
-    
 
     @Override
     public double getPrice() {
