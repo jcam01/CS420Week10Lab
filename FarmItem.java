@@ -5,3 +5,5 @@ public interface FarmItem {
 	String getName(); // Return the object's name.
 	void display(String indent); // Print the object, anything inside it, as an indented list.
 }
+// add and remove belong here because of the fact that containers can implement these methods,
+// although individual items do not need to themselves.
