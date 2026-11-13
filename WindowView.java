@@ -1,3 +1,5 @@
+import javafx.animation.SequentialTransition;
+import javafx.animation.TranslateTransition;
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
@@ -9,9 +11,8 @@ import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
-import javafx.animation.TranslateTransition;
-import javafx.animation.SequentialTransition;
 import javafx.util.Duration;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,100 +22,190 @@ public class WindowView extends Application {
     public void start(Stage stage) {
         stage.setTitle("Farm View");
 
-        BorderPane borderPane = new BorderPane();
+        // Keep the map at the assignment's required size.
         Pane farmPane = new Pane();
         farmPane.setPrefSize(800, 600);
+        farmPane.setMinSize(800, 600);
+        farmPane.setMaxSize(800, 600);
 
-        // Build the farm tree from the table specification
-        ItemContainer farm = new ItemContainer("Farm", 0, 0, 0, 800, 600);
-        
-        ItemContainer barn = new ItemContainer("Barn", 20000, 20, 40, 360, 300);
-        farm.addChild(barn);
+        // Use Member 2's builder instead of rebuilding the farm here.
+        FarmItem farm = FarmBuilder.buildFarm();
 
-        ItemContainer livestockArea = new ItemContainer("Livestock Area", 3000, 40, 70, 200, 140);
-        barn.addChild(livestockArea);
-
-        Item cow = new Item("Cow", 1500, 70, 120, 50, 30);
-        livestockArea.addChild(cow);
-
-        Item milkStorage = new Item("Milk Storage", 4000, 260, 70, 100, 60);
-        barn.addChild(milkStorage);
-
-        ItemContainer storageBuilding = new ItemContainer("Storage Building", 8000, 420, 40, 360, 160);
-        farm.addChild(storageBuilding);
-
-        Item tractor = new Item("Tractor", 45000, 450, 90, 100, 50);
-        storageBuilding.addChild(tractor);
-
-        Item tiller = new Item("Tiller", 2500, 600, 90, 80, 50);
-        storageBuilding.addChild(tiller);
-
-        ItemContainer commandCenter = new ItemContainer("Command Center", 10000, 20, 380, 260, 180);
-        farm.addChild(commandCenter);
-
-        Item droneItem = new Item("Drone", 1200, 120, 440, 60, 60);
-        commandCenter.addChild(droneItem);
-
-        Item soyCrop = new Item("Soy Crop", 6000, 420, 240, 360, 320);
-        farm.addChild(soyCrop);
-
-        // Draw the farm once on the root pane
+        // The application's one draw call, on the root.
         farm.draw(farmPane);
 
-        // Create the drone circle centered on the Drone item and add it after drawing the farm
-        double droneStartX = droneItem.getX() + droneItem.getWidth() / 2;
-        double droneStartY = droneItem.getY() + droneItem.getHeight() / 2;
-        Circle drone = new Circle(droneStartX, droneStartY, 12, Color.DODGERBLUE);
-        farmPane.getChildren().add(drone);
-
-        borderPane.setCenter(farmPane);
-
-        // Collect items for the drop-down list
+        // Build the dropdown list from the tree.
         List<FarmItem> farmItems = new ArrayList<>();
         farm.collect(farmItems);
-        System.out.println("Items and containers on the farm: " + farmItems.size());
+
+        System.out.println(
+                "Items and containers on the farm: " + farmItems.size()
+        );
+
+        // Find the Drone item through the interface.
+        FarmItem droneItem = null;
+
+        for (FarmItem item : farmItems) {
+            if ("Drone".equals(item.getName())) {
+                droneItem = item;
+                break;
+            }
+        }
+
+        if (droneItem == null) {
+            throw new IllegalStateException(
+                    "The farm must contain an item named Drone."
+            );
+        }
+
+        final double droneStartX =
+                droneItem.getX() + droneItem.getWidth() / 2.0;
+
+        final double droneStartY =
+                droneItem.getY() + droneItem.getHeight() / 2.0;
+
+        // Add the circle after drawing so it appears above the farm.
+        Circle drone = new Circle(
+                droneStartX,
+                droneStartY,
+                12,
+                Color.DODGERBLUE
+        );
+
+        farmPane.getChildren().add(drone);
 
         ComboBox<FarmItem> items = new ComboBox<>();
         items.getItems().addAll(farmItems);
-        if (!farmItems.isEmpty()) {
-            items.getSelectionModel().selectFirst();
-        }
+        items.setPrefWidth(220);
+        items.getSelectionModel().selectFirst();
 
         Button visitButton = new Button("Visit Item/Container");
         Button scanButton = new Button("Scan Farm");
 
-        // Wire up the Visit button with TranslateTransition and SequentialTransition
-        visitButton.setOnAction(e -> {
-            FarmItem selected = items.getSelectionModel().getSelectedItem();
-            if (selected != null) {
-                double targetX = selected.getX() + selected.getWidth() / 2;
-                double targetY = selected.getY() + selected.getHeight() / 2;
+        // Visit the selected object, then return home.
+        visitButton.setOnAction(event -> {
+            FarmItem selected =
+                    items.getSelectionModel().getSelectedItem();
 
-                double toX = targetX - droneStartX;
-                double toY = targetY - droneStartY;
-
-                TranslateTransition outTransition = new TranslateTransition(Duration.seconds(0.8), drone);
-                outTransition.setToX(toX);
-                outTransition.setToY(toY);
-                outTransition.setOnFinished(ev -> System.out.println("Drone reached: " + selected));
-
-                TranslateTransition homeTransition = new TranslateTransition(Duration.seconds(0.8), drone);
-                homeTransition.setToX(0);
-                homeTransition.setToY(0);
-                homeTransition.setOnFinished(ev -> System.out.println("Drone back at Command Center"));
-
-                SequentialTransition seq = new SequentialTransition(outTransition, homeTransition);
-                seq.play();
+            if (selected == null) {
+                return;
             }
+
+            SequentialTransition route = new SequentialTransition();
+
+            route.getChildren().add(
+                    createFlight(
+                            drone, selected, droneStartX, droneStartY
+                    )
+            );
+
+            route.getChildren().add(createHomeFlight(drone));
+
+            playRoute(route, items, visitButton, scanButton);
         });
 
-        HBox controls = new HBox(10, items, visitButton, scanButton);
-        controls.setPadding(new Insets(10));
-        borderPane.setBottom(controls);
+        // Collect a scan route from the tree, skipping the root.
+        scanButton.setOnAction(event -> {
+            List<FarmItem> scanItems = new ArrayList<>();
+            farm.collect(scanItems);
 
-        Scene scene = new Scene(borderPane, 800, 600);
+            SequentialTransition route = new SequentialTransition();
+
+            for (FarmItem target : scanItems) {
+                if (target == farm) {
+                    continue;
+                }
+
+                route.getChildren().add(
+                        createFlight(
+                                drone, target, droneStartX, droneStartY
+                        )
+                );
+            }
+
+            route.getChildren().add(createHomeFlight(drone));
+
+            playRoute(route, items, visitButton, scanButton);
+        });
+
+        HBox controls = new HBox(
+                10, items, visitButton, scanButton
+        );
+        controls.setPadding(new Insets(10));
+
+        BorderPane root = new BorderPane();
+        root.setCenter(farmPane);
+        root.setBottom(controls);
+
+        // Let the scene fit both the full map and the controls.
+        Scene scene = new Scene(root);
         stage.setScene(scene);
+        stage.setResizable(false);
+        stage.sizeToScene();
         stage.show();
+    }
+
+    private TranslateTransition createFlight(
+            Circle drone,
+            FarmItem target,
+            double droneStartX,
+            double droneStartY) {
+
+        double targetCenterX =
+                target.getX() + target.getWidth() / 2.0;
+
+        double targetCenterY =
+                target.getY() + target.getHeight() / 2.0;
+
+        TranslateTransition flight = new TranslateTransition(
+                Duration.seconds(0.8), drone
+        );
+
+        flight.setToX(targetCenterX - droneStartX);
+        flight.setToY(targetCenterY - droneStartY);
+
+        flight.setOnFinished(event ->
+                System.out.println(
+                        "Drone reached: " + target.getName()
+                )
+        );
+
+        return flight;
+    }
+
+    private TranslateTransition createHomeFlight(Circle drone) {
+        TranslateTransition home = new TranslateTransition(
+                Duration.seconds(0.8), drone
+        );
+
+        home.setToX(0);
+        home.setToY(0);
+
+        home.setOnFinished(event ->
+                System.out.println("Drone back at Command Center")
+        );
+
+        return home;
+    }
+
+    private void playRoute(
+            SequentialTransition route,
+            ComboBox<FarmItem> items,
+            Button visitButton,
+            Button scanButton) {
+
+        // Prevent overlapping flights.
+        items.setDisable(true);
+        visitButton.setDisable(true);
+        scanButton.setDisable(true);
+
+        route.setOnFinished(event -> {
+            items.setDisable(false);
+            visitButton.setDisable(false);
+            scanButton.setDisable(false);
+        });
+
+        route.play();
     }
 
     public static void main(String[] args) {
