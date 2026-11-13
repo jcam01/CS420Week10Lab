@@ -1,3 +1,6 @@
+import java.util.List;
+import javafx.scene.layout.Pane;
+
 public interface FarmItem {
 	void add(FarmItem item); // Insert item from the object.
 	void remove(FarmItem item); // Remove item from the object.
